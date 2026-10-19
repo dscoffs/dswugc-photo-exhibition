@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>가을과 덕성과 우리 - 2026 글로벌융합대학 사진전</title>
+  <title>가을과 덕성과 우리 - 2026학년도 글로벌융합대학 사진전</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Lucide Icons -->
@@ -286,7 +286,7 @@
         </div>
 
         <div class="pt-1">
-          <button type="submit" class="w-full py-3 bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl shadow flex items-center justify-center gap-1.5 text-xs">
+          <button type="submit" id="submit-btn" class="w-full py-3 bg-amber-700 active:bg-amber-800 text-white font-bold rounded-xl shadow flex items-center justify-center gap-1.5 text-xs">
             <i data-lucide="check" class="w-4 h-4"></i>
             <span>작품 등록 완료</span>
           </button>
@@ -383,13 +383,32 @@
     </div>
   </div>
 
-  <!-- JAVASCRIPT LOGIC -->
-  <script>
-    const ADMIN_PASSWORD = "cofss8162";
+  <!-- FIREBASE SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD51S8_zI2DhzKz7gLIc6UYwohHFnaP1C0",
+      authDomain: "dswu-gc.firebaseapp.com",
+      projectId: "dswu-gc",
+      storageBucket: "dswu-gc.firebasestorage.app",
+      messagingSenderId: "403895304206",
+      appId: "1:403895304206:web:61259145fbd4d1a66e3c5f",
+      measurementId: "G-8CWF9YD2Q1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const storage = getStorage(app);
+
+    const ADMIN_PASSWORD = "cofss8162!";
     let isAdmin = false;
     let currentSort = 'popular';
     let currentDetailId = null;
     let pendingVotePhotoId = null;
+    let photosData = [];
 
     const SUBMISSION_DEADLINE = new Date("2026-10-31T23:59:59");
     const VOTING_DEADLINE = new Date("2026-11-16T23:59:59");
@@ -439,31 +458,30 @@
       }
     ];
 
-    function getPhotos() {
-      const stored = localStorage.getItem('duksung_photo_gallery');
-      let photos = stored ? JSON.parse(stored) : [];
-      
-      // Ensure sample photos always exist at the end if missing
-      const hasSamples = photos.some(p => p.isSample);
-      if (!hasSamples) {
-        photos = [...photos, ...defaultSamplePhotos];
-        localStorage.setItem('duksung_photo_gallery', JSON.stringify(photos));
-      }
-      return photos;
-    }
-
-    function savePhotos(photos) {
-      localStorage.setItem('duksung_photo_gallery', JSON.stringify(photos));
-    }
-
-    function maskStudentId(id) {
+    window.maskStudentId = function(id) {
       if (!id || id.length < 4) return "****";
       return id.substring(0, 4) + "****";
     }
 
-    function renderGallery() {
-      let photos = getPhotos();
+    // Real-time Firestore Sync
+    function initRealtimeSync() {
+      const q = query(collection(db, "photos"), orderBy("createdAt", "desc"));
+      onSnapshot(q, (snapshot) => {
+        let realPhotos = [];
+        snapshot.forEach((docSnap) => {
+          realPhotos.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        photosData = [...realPhotos, ...defaultSamplePhotos];
+        renderGallery();
+        if (currentDetailId) {
+          const updated = photosData.find(p => p.id === currentDetailId);
+          if (updated) updateModalVoteUI(updated);
+        }
+      });
+    }
 
+    window.renderGallery = function() {
+      let photos = [...photosData];
       const searchQuery = document.getElementById('search-input').value.trim().toLowerCase();
 
       if (searchQuery) {
@@ -480,7 +498,7 @@
         if (currentSort === 'popular') {
           return b.votes - a.votes;
         } else {
-          return new Date(b.createdAt) - new Date(a.createdAt);
+          return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
         }
       });
 
@@ -517,7 +535,7 @@
           rankBadgeHTML = `<span class="absolute top-2.5 left-2.5 bg-stone-800/80 text-amber-200 font-bold text-[10px] px-2 py-0.5 rounded-full z-10">💡 예시 참고용</span>`;
         }
 
-        const displayedStudentId = isAdmin ? photo.studentId : maskStudentId(photo.studentId);
+        const displayedStudentId = isAdmin ? photo.studentId : window.maskStudentId(photo.studentId);
 
         return `
           <div class="bg-white rounded-2xl overflow-hidden border border-stone-200/80 shadow-sm card-hover flex flex-col justify-between">
@@ -528,7 +546,7 @@
 
             <div class="p-3.5 flex-1 flex flex-col justify-between">
               <div>
-                <h3 class="font-bold text-stone-900 text-sm leading-snug line-clamp-1 mb-1" onclick="openDetailModal('${photo.id}')">
+                <h3 class="font-bold text-stone-900 text-sm leading-snug line-clamp-1 mb-1 cursor-pointer" onclick="openDetailModal('${photo.id}')">
                   ${escapeHtml(photo.title)}
                 </h3>
                 
@@ -542,7 +560,7 @@
 
               <div class="pt-2 border-t border-stone-100 flex items-center justify-between">
                 <div class="text-xs text-stone-500">
-                  <strong class="text-amber-800 font-bold text-sm">${photo.votes}</strong> 표
+                  <strong class="text-amber-800 font-bold text-sm">${photo.votes || 0}</strong> 표
                 </div>
 
                 ${!photo.isSample ? `
@@ -569,7 +587,7 @@
       lucide.createIcons();
     }
 
-    function setSort(sortType) {
+    window.setSort = function(sortType) {
       currentSort = sortType;
       const popularBtn = document.getElementById('sort-popular');
       const latestBtn = document.getElementById('sort-latest');
@@ -585,7 +603,7 @@
       renderGallery();
     }
 
-    function initiateVote(photoId, event) {
+    window.initiateVote = function(photoId, event) {
       if (event) event.stopPropagation();
 
       if (!isVotingOpen()) {
@@ -602,13 +620,13 @@
       }
     }
 
-    function openVoteAuthModal() {
+    window.openVoteAuthModal = function() {
       const modal = document.getElementById('vote-auth-modal');
       modal.classList.remove('hidden');
       setTimeout(() => modal.classList.remove('opacity-0'), 10);
     }
 
-    function closeVoteAuthModal() {
+    window.closeVoteAuthModal = function() {
       const modal = document.getElementById('vote-auth-modal');
       modal.classList.add('opacity-0');
       setTimeout(() => {
@@ -617,7 +635,7 @@
       }, 300);
     }
 
-    function handleVoteAuthSubmit(event) {
+    window.handleVoteAuthSubmit = function(event) {
       event.preventDefault();
       const voterId = document.getElementById('voter-student-id').value.trim();
 
@@ -635,14 +653,13 @@
       }
     }
 
-    function processVote(voterStudentId, photoId) {
+    async function processVote(voterStudentId, photoId) {
       if (!isVotingOpen()) {
         alert("🔒 인기상 투표 기간이 종료되었습니다. (~11월 16일 마감)");
         return;
       }
 
-      let photos = getPhotos();
-      const photo = photos.find(p => p.id === photoId);
+      const photo = photosData.find(p => p.id === photoId);
       if (!photo || photo.isSample) return;
 
       if (photo.studentId === voterStudentId) {
@@ -652,12 +669,12 @@
 
       let registry = getVoteRegistry();
       let userVotes = registry[voterStudentId] || [];
-
       const isVoted = userVotes.includes(photoId);
 
+      let newVotes = photo.votes || 0;
       if (isVoted) {
         userVotes = userVotes.filter(id => id !== photoId);
-        photo.votes = Math.max(0, photo.votes - 1);
+        newVotes = Math.max(0, newVotes - 1);
         alert("투표가 취소되었습니다.");
       } else {
         if (userVotes.length >= 3) {
@@ -665,30 +682,35 @@
           return;
         }
         userVotes.push(photoId);
-        photo.votes += 1;
+        newVotes += 1;
         alert("👍 투표가 완료되었습니다!");
       }
 
-      registry[voterStudentId] = userVotes;
-      saveVoteRegistry(registry);
-      savePhotos(photos);
-      renderGallery();
+      try {
+        const photoRef = doc(db, "photos", photoId);
+        await updateDoc(photoRef, { votes: newVotes });
+        registry[voterStudentId] = userVotes;
+        saveVoteRegistry(registry);
 
-      if (currentDetailId === photoId) {
-        updateModalVoteUI(photo);
+        if (currentDetailId === photoId) {
+          photo.votes = newVotes;
+          updateModalVoteUI(photo);
+        }
+      } catch (error) {
+        console.error("투표 반영 중 오류 발생:", error);
+        alert("투표 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
       }
     }
 
-    function openDetailModal(id) {
+    window.openDetailModal = function(id) {
       currentDetailId = id;
-      const photos = getPhotos();
-      const photo = photos.find(p => p.id === id);
+      const photo = photosData.find(p => p.id === id);
       if (!photo) return;
 
       document.getElementById('modal-img').src = photo.imageUrl;
       document.getElementById('modal-title').textContent = photo.title;
       document.getElementById('modal-author-name').textContent = photo.authorName;
-      document.getElementById('modal-student-id').textContent = isAdmin ? photo.studentId : maskStudentId(photo.studentId);
+      document.getElementById('modal-student-id').textContent = isAdmin ? photo.studentId : window.maskStudentId(photo.studentId);
       
       const phoneRow = document.getElementById('modal-phone-row');
       if (isAdmin && photo.phone) {
@@ -700,7 +722,7 @@
 
       document.getElementById('modal-desc').textContent = photo.desc || "등록된 작품 소개말이 없습니다.";
 
-      const realPhotos = photos.filter(p => !p.isSample).sort((a, b) => b.votes - a.votes);
+      const realPhotos = photosData.filter(p => !p.isSample).sort((a, b) => b.votes - a.votes);
       const rankIndex = realPhotos.findIndex(p => p.id === id);
       const rankBadge = document.getElementById('modal-rank-badge');
       
@@ -737,7 +759,7 @@
       const userVotes = currentVoterStudentId ? (registry[currentVoterStudentId] || []) : [];
       const isVoted = userVotes.includes(photo.id);
 
-      document.getElementById('modal-vote-count').textContent = photo.votes;
+      document.getElementById('modal-vote-count').textContent = photo.votes || 0;
       const voteBtn = document.getElementById('modal-vote-btn');
       const voteBtnText = document.getElementById('modal-vote-btn-text');
 
@@ -759,7 +781,7 @@
       voteBtn.onclick = (e) => initiateVote(photo.id, e);
     }
 
-    function closeDetailModal() {
+    window.closeDetailModal = function() {
       const modal = document.getElementById('detail-modal');
       const modalContent = document.getElementById('detail-modal-content');
       modal.classList.add('opacity-0');
@@ -770,7 +792,7 @@
       }, 300);
     }
 
-    function openUploadModal() {
+    window.openUploadModal = function() {
       if (!isSubmissionOpen()) {
         alert("🔒 작품 출품 기간이 완료되었습니다. (~10월 31일 마감)");
         return;
@@ -785,7 +807,7 @@
       }, 10);
     }
 
-    function closeUploadModal() {
+    window.closeUploadModal = function() {
       const modal = document.getElementById('upload-modal');
       const modalContent = document.getElementById('upload-modal-content');
       modal.classList.add('opacity-0');
@@ -793,11 +815,11 @@
       setTimeout(() => {
         modal.classList.add('hidden');
         document.getElementById('upload-form').reset();
-        removePreview();
+        window.removePreview();
       }, 300);
     }
 
-    function previewImage(event) {
+    window.previewImage = function(event) {
       const file = event.target.files[0];
       if (!file) return;
 
@@ -810,7 +832,7 @@
       reader.readAsDataURL(file);
     }
 
-    function removePreview(event) {
+    window.removePreview = function(event) {
       if (event) event.stopPropagation();
       document.getElementById('photo-file').value = '';
       document.getElementById('image-preview').src = '';
@@ -818,7 +840,7 @@
       document.getElementById('preview-container').classList.add('hidden');
     }
 
-    function handleUploadSubmit(event) {
+    window.handleUploadSubmit = async function(event) {
       event.preventDefault();
 
       if (!isSubmissionOpen()) {
@@ -831,39 +853,49 @@
       const studentId = document.getElementById('student-id').value.trim();
       const phone = document.getElementById('phone-number').value.trim();
       const desc = document.getElementById('photo-desc').value.trim();
-      const previewImgSrc = document.getElementById('image-preview').src;
+      const fileInput = document.getElementById('photo-file');
 
-      if (!previewImgSrc) {
+      if (!fileInput.files[0]) {
         alert("작품 사진을 선택해주세요.");
         return;
       }
 
-      const now = new Date();
-      const formattedDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = "업로드 중...";
 
-      const newPhoto = {
-        id: "p_" + Date.now(),
-        title,
-        authorName,
-        studentId,
-        phone,
-        desc,
-        imageUrl: previewImgSrc,
-        votes: 0,
-        createdAt: formattedDate,
-        isSample: false
-      };
+      try {
+        const file = fileInput.files[0];
+        const storageRef = ref(storage, `photos/${Date.now()}_${file.name}`);
+        await uploadBytes(storageRef, file);
+        const imageUrl = await getDownloadURL(storageRef);
 
-      let photos = getPhotos();
-      photos.unshift(newPhoto);
-      savePhotos(photos);
+        const now = new Date();
+        const formattedDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-      closeUploadModal();
-      renderGallery();
-      alert("🎉 작품이 성공적으로 출품되었습니다!");
+        await addDoc(collection(db, "photos"), {
+          title,
+          authorName,
+          studentId,
+          phone,
+          desc,
+          imageUrl,
+          votes: 0,
+          createdAt: formattedDate
+        });
+
+        window.closeUploadModal();
+        alert("🎉 작품이 성공적으로 출품되었습니다!");
+      } catch (error) {
+        console.error("출품 중 오류 발생:", error);
+        alert("업로드 중 오류가 발생했습니다. 다시 시도해 주세요.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "작품 등록 완료";
+      }
     }
 
-    function toggleAdminModal() {
+    window.toggleAdminModal = function() {
       if (isAdmin) {
         isAdmin = false;
         document.getElementById('admin-badge-desktop').classList.add('hidden');
@@ -882,7 +914,7 @@
       setTimeout(() => modal.classList.remove('opacity-0'), 10);
     }
 
-    function handleAdminLogin(event) {
+    window.handleAdminLogin = function(event) {
       event.preventDefault();
       const inputPass = document.getElementById('admin-password').value;
 
@@ -910,41 +942,43 @@
       }
     }
 
-    function deletePhoto(id) {
+    window.deletePhoto = async function(id) {
       if (!isAdmin) return;
       if (confirm("정말로 이 작품을 삭제하시겠습니까?")) {
-        let photos = getPhotos();
-        photos = photos.filter(p => p.id !== id);
-        savePhotos(photos);
-        closeDetailModal();
-        renderGallery();
-        alert("작품이 삭제되었습니다.");
+        try {
+          await deleteDoc(doc(db, "photos", id));
+          window.closeDetailModal();
+          alert("작품이 삭제되었습니다.");
+        } catch (error) {
+          console.error("삭제 중 오류:", error);
+          alert("삭제에 실패했습니다.");
+        }
       }
     }
 
-    function exportToCSV() {
+    window.exportToCSV = function() {
       if (!isAdmin) return;
-      let photos = getPhotos().filter(p => !p.isSample);
+      let photos = photosData.filter(p => !p.isSample);
       photos.sort((a, b) => b.votes - a.votes);
 
       let csv = "\uFEFF순위,작품제목,출품자이름,학번,연락처,득표수,작품소개말,출품일시\n";
       
       photos.forEach((p, idx) => {
         const cleanDesc = (p.desc || "").replace(/"/g, '""').replace(/\n/g, ' ');
-        csv += `${idx + 1},"${p.title}","${p.authorName}","${p.studentId}","${p.phone}",${p.votes},"${cleanDesc}","${p.createdAt}"\n`;
+        csv += `${idx + 1},"${p.title}","${p.authorName}","${p.studentId}","${p.phone}",${p.votes || 0},"${cleanDesc}","${p.createdAt}"\n`;
       });
 
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", `가을과_덕성과_우리_사진전_결과_${new Date().toISOString().slice(0,10)}.csv`);
+      link.setAttribute("download", `글로벌융합대학_사진전_결과_${new Date().toISOString().slice(0,10)}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
 
-    function scrollToTop() {
+    window.scrollToTop = function() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -953,8 +987,9 @@
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
+    // Initialize sync on load
     window.addEventListener('DOMContentLoaded', () => {
-      renderGallery();
+      initRealtimeSync();
     });
   </script>
 </body>
