@@ -383,11 +383,10 @@
     </div>
   </div>
 
-  <!-- FIREBASE SDKs -->
+  <!-- FIREBASE SDKs (NO STORAGE NEEDED) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+    import { getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyD51S8_zI2DhzKz7gLIc6UYwohHFnaP1C0",
@@ -401,9 +400,8 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const storage = getStorage(app);
 
-    const ADMIN_PASSWORD = "cofss8162!";
+    const ADMIN_PASSWORD = "admin1234";
     let isAdmin = false;
     let currentSort = 'popular';
     let currentDetailId = null;
@@ -477,6 +475,8 @@
           const updated = photosData.find(p => p.id === currentDetailId);
           if (updated) updateModalVoteUI(updated);
         }
+      }, (error) => {
+        console.error("Firestore 동기화 오류:", error);
       });
     }
 
@@ -823,11 +823,36 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      // Image Compression & Base64 Converter for direct Firestore Storage
       const reader = new FileReader();
       reader.onload = function(e) {
-        document.getElementById('image-preview').src = e.target.result;
-        document.getElementById('upload-placeholder').classList.add('hidden');
-        document.getElementById('preview-container').classList.remove('hidden');
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Compressed Web-friendly Data URL
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          document.getElementById('image-preview').src = compressedDataUrl;
+          document.getElementById('upload-placeholder').classList.add('hidden');
+          document.getElementById('preview-container').classList.remove('hidden');
+        };
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     }
@@ -853,9 +878,9 @@
       const studentId = document.getElementById('student-id').value.trim();
       const phone = document.getElementById('phone-number').value.trim();
       const desc = document.getElementById('photo-desc').value.trim();
-      const fileInput = document.getElementById('photo-file');
+      const previewImgSrc = document.getElementById('image-preview').src;
 
-      if (!fileInput.files[0]) {
+      if (!previewImgSrc) {
         alert("작품 사진을 선택해주세요.");
         return;
       }
@@ -865,11 +890,6 @@
       submitBtn.textContent = "업로드 중...";
 
       try {
-        const file = fileInput.files[0];
-        const storageRef = ref(storage, `photos/${Date.now()}_${file.name}`);
-        await uploadBytes(storageRef, file);
-        const imageUrl = await getDownloadURL(storageRef);
-
         const now = new Date();
         const formattedDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
@@ -879,7 +899,7 @@
           studentId,
           phone,
           desc,
-          imageUrl,
+          imageUrl: previewImgSrc, // Directly saved to DB
           votes: 0,
           createdAt: formattedDate
         });
@@ -888,7 +908,7 @@
         alert("🎉 작품이 성공적으로 출품되었습니다!");
       } catch (error) {
         console.error("출품 중 오류 발생:", error);
-        alert("업로드 중 오류가 발생했습니다. 다시 시도해 주세요.");
+        alert("업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "작품 등록 완료";
@@ -987,7 +1007,6 @@
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // Initialize sync on load
     window.addEventListener('DOMContentLoaded', () => {
       initRealtimeSync();
     });
