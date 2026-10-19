@@ -418,7 +418,19 @@
     function isVotingOpen() {
       return new Date() <= VOTING_DEADLINE;
     }
+// 허용된 학번 범위인지 확인하는 함수
+function isValidVoterStudentId(idStr) {
+  const num = parseInt(idStr, 10);
+  if (isNaN(num)) return false;
 
+  const inRange1 = (num >= 20260000 && num <= 20260442);
+  const inRange2 = (num >= 20261314 && num <= 20261319);
+  const inRange3 = (num >= 20261331 && num <= 20261367);
+
+  return inRange1 || inRange2 || inRange3;
+}
+
+    
     let currentVoterStudentId = sessionStorage.getItem('duksung_voter_id') || null;
 
     function getVoteRegistry() {
@@ -636,12 +648,28 @@
     }
 
     window.handleVoteAuthSubmit = function(event) {
-      event.preventDefault();
-      const voterId = document.getElementById('voter-student-id').value.trim();
+  event.preventDefault();
+  const voterId = document.getElementById('voter-student-id').value.trim();
 
-      if (!voterId || voterId.length < 4) {
-        alert("올바른 학번을 입력해 주세요.");
-        return;
+  if (!voterId || voterId.length !== 8) {
+    alert("8자리 학번을 정확히 입력해 주세요.");
+    return;
+  }
+
+  // 지정된 학번 범위 검증
+  if (!isValidVoterStudentId(voterId)) {
+    alert("⚠️ 투표 대상 학번이 아닙니다.\n(글로벌융합대학 대상 학번만 투표 가능합니다)");
+    return;
+  }
+
+  currentVoterStudentId = voterId;
+  sessionStorage.getItem('duksung_voter_id') || sessionStorage.setItem('duksung_voter_id', voterId);
+  closeVoteAuthModal();
+
+  if (pendingVotePhotoId) {
+    processVote(voterId, pendingVotePhotoId);
+  }
+}
       }
 
       currentVoterStudentId = voterId;
@@ -654,10 +682,20 @@
     }
 
     async function processVote(voterStudentId, photoId) {
-      if (!isVotingOpen()) {
-        alert("🔒 인기상 투표 기간이 종료되었습니다. (~11월 16일 마감)");
-        return;
-      }
+  if (!isVotingOpen()) {
+    alert("🔒 인기상 투표 기간이 종료되었습니다. (~11월 16일 마감)");
+    return;
+  }
+
+  // 학번 범위 재검증
+  if (!isValidVoterStudentId(voterStudentId)) {
+    alert("⚠️ 투표 대상 학번이 아닙니다.");
+    sessionStorage.removeItem('duksung_voter_id');
+    currentVoterStudentId = null;
+    return;
+  }
+
+  // ... (기존 processVote 나머지 코드 동일)
 
       const photo = photosData.find(p => p.id === photoId);
       if (!photo || photo.isSample) return;
