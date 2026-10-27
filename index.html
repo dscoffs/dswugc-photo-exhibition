@@ -33,7 +33,8 @@
     <div class="max-w-7xl mx-auto px-4">
       <div class="flex items-center justify-between h-14 sm:h-16">
         
-        <div class="flex items-center gap-2.5">
+        <!-- 숨겨진 관리자 접속 트리거 (로고 5번 연속 클릭) -->
+        <div onclick="handleSecretAdminTrigger()" class="flex items-center gap-2.5 cursor-pointer select-none" title="사진전">
           <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-700 via-red-700 to-amber-500 flex items-center justify-center text-white shadow-sm">
             <i data-lucide="camera" class="w-5 h-5"></i>
           </div>
@@ -54,10 +55,7 @@
             <span>결과 CSV 다운로드</span>
           </button>
 
-          <button onclick="toggleAdminModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-300 hover:bg-stone-100 text-stone-700 text-xs font-medium transition">
-            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
-            <span id="admin-btn-text-desktop">관리자 로그인</span>
-          </button>
+          <!-- 노출되던 관리자 로그인 버튼 완전 삭제됨 -->
 
           <button onclick="openUploadModal()" class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-800 text-white text-sm font-semibold shadow-md transition">
             <i data-lucide="plus-circle" class="w-4 h-4"></i>
@@ -161,9 +159,9 @@
 
   </main>
 
-  <!-- MOBILE BOTTOM NAV -->
+  <!-- MOBILE BOTTOM NAV (관리자 탭 제거 후 3열 구성) -->
   <div class="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t border-stone-200 z-40 px-3 py-2">
-    <div class="grid grid-cols-4 gap-1 text-center">
+    <div class="grid grid-cols-3 gap-1 text-center">
       <button onclick="scrollToTop()" class="flex flex-col items-center justify-center py-1 text-amber-800 font-bold">
         <i data-lucide="home" class="w-5 h-5 mb-0.5"></i>
         <span class="text-[10px]">홈/목록</span>
@@ -177,11 +175,6 @@
       <button onclick="setSort(currentSort === 'popular' ? 'latest' : 'popular')" class="flex flex-col items-center justify-center py-1 text-stone-600">
         <i data-lucide="arrow-up-down" class="w-5 h-5 mb-0.5"></i>
         <span class="text-[10px]">정렬변경</span>
-      </button>
-
-      <button onclick="toggleAdminModal()" class="flex flex-col items-center justify-center py-1 text-stone-600">
-        <i data-lucide="lock" class="w-5 h-5 mb-0.5"></i>
-        <span class="text-[10px]" id="mobile-admin-tab-text">관리자</span>
       </button>
     </div>
   </div>
@@ -411,6 +404,22 @@
     const SUBMISSION_DEADLINE = new Date("2026-11-09T23:59:59");
     const VOTING_START = new Date("2026-11-10T00:00:00");
     const VOTING_DEADLINE = new Date("2026-11-16T23:59:59");
+
+    // 비밀 관리자 트리거 변수 (로고 5번 연속 클릭)
+    let logoClickCount = 0;
+    let logoClickTimer = null;
+    window.handleSecretAdminTrigger = function() {
+      logoClickCount++;
+      if (logoClickTimer) clearTimeout(logoClickTimer);
+      logoClickTimer = setTimeout(() => {
+        logoClickCount = 0;
+      }, 1000);
+
+      if (logoClickCount >= 5) {
+        logoClickCount = 0;
+        toggleAdminModal();
+      }
+    };
 
     function isSubmissionOpen() {
       return new Date() <= SUBMISSION_DEADLINE;
@@ -964,8 +973,6 @@
         document.getElementById('admin-badge-mobile').classList.add('hidden');
         document.getElementById('btn-export-csv').classList.add('hidden');
         document.getElementById('btn-export-csv-mobile').classList.add('hidden');
-        document.getElementById('admin-btn-text-desktop').textContent = "관리자 로그인";
-        document.getElementById('mobile-admin-tab-text').textContent = "관리자";
         alert("관리자 모드에서 로그아웃 되었습니다.");
         renderGallery();
         return;
@@ -989,8 +996,6 @@
         document.getElementById('btn-export-csv').classList.add('flex');
         document.getElementById('btn-export-csv-mobile').classList.remove('hidden');
         document.getElementById('btn-export-csv-mobile').classList.add('flex');
-        document.getElementById('admin-btn-text-desktop').textContent = "관리자 로그아웃";
-        document.getElementById('mobile-admin-tab-text').textContent = "로그아웃";
         
         document.getElementById('admin-password').value = '';
         const modal = document.getElementById('admin-modal');
