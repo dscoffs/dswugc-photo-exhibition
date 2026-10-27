@@ -91,7 +91,7 @@
       </h2>
       <p class="text-amber-100/95 text-sm sm:text-lg max-w-xl mx-auto font-normal leading-relaxed mb-6">
         덕우들이 담아낸 캠퍼스의 가을!<br/>
-        지정된 학번으로 인증하여 마음에 드는 사진에 투표해 주세요.
+        학번 인증 후 출품 및 투표에 참여해 주세요.
       </p>
 
       <div class="inline-flex flex-wrap items-center justify-center gap-3 bg-black/30 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/15 text-xs sm:text-base text-amber-100 font-semibold shadow-lg">
@@ -186,7 +186,7 @@
     </div>
   </div>
 
-  <!-- VOTE AUTH POPUP MODAL (z-index z-[60]) -->
+  <!-- VOTE AUTH POPUP MODAL -->
   <div id="vote-auth-modal" class="fixed inset-0 bg-stone-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300">
     <div class="bg-white w-full max-w-xs rounded-2xl shadow-2xl p-5 relative border border-stone-100">
       <button onclick="closeVoteAuthModal()" class="absolute top-3 right-3 text-stone-400 p-1">
@@ -282,7 +282,7 @@
         </div>
 
         <div class="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[10px] text-amber-900">
-          🔒 학번과 연락처는 공개되지 않으며 관리자만 확인 가능합니다.
+          🔒 글로벌융합대학 1학년 지정 학번만 출품 가능합니다.
         </div>
 
         <div class="pt-1">
@@ -408,7 +408,6 @@
     let pendingVotePhotoId = null;
     let photosData = [];
 
-    // 출품 마감: 2026년 11월 2일 23시 59분 59초
     const SUBMISSION_DEADLINE = new Date("2026-11-02T23:59:59");
     const VOTING_START = new Date("2026-11-03T00:00:00");
     const VOTING_DEADLINE = new Date("2026-11-16T23:59:59");
@@ -417,13 +416,12 @@
       return new Date() <= SUBMISSION_DEADLINE;
     }
 
-    // 투표 기간 검증 (11월 3일 00:00 ~ 11월 16일 23:59)
     function isVotingOpen() {
       const now = new Date();
       return now >= VOTING_START && now <= VOTING_DEADLINE;
     }
 
-    // 허용된 투표 학번 범위 검증 함수
+    // 출품 및 투표 공통 학번 범위 검증 함수 (1학년 지정 학번)
     function isValidVoterStudentId(idStr) {
       const num = parseInt(idStr, 10);
       if (isNaN(num)) return false;
@@ -902,6 +900,7 @@
       document.getElementById('preview-container').classList.add('hidden');
     }
 
+    // 출품 시 1학년 학번 범위 검증 추가
     window.handleUploadSubmit = async function(event) {
       event.preventDefault();
 
@@ -916,6 +915,17 @@
       const phone = document.getElementById('phone-number').value.trim();
       const desc = document.getElementById('photo-desc').value.trim();
       const previewImgSrc = document.getElementById('image-preview').src;
+
+      if (!studentId || studentId.length !== 8) {
+        alert("8자리 학번을 정확히 입력해 주세요.");
+        return;
+      }
+
+      // 1학년 지정 학번 범위 검증
+      if (!isValidVoterStudentId(studentId)) {
+        alert("⚠️ 출품 대상 학번이 아닙니다.\n(글로벌융합대학 1학년 지정 학번만 출품 가능합니다)");
+        return;
+      }
 
       if (!previewImgSrc) {
         alert("작품 사진을 선택해주세요.");
