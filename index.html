@@ -91,7 +91,7 @@
       </h2>
       <p class="text-amber-100/95 text-sm sm:text-lg max-w-xl mx-auto font-normal leading-relaxed mb-6">
         덕우들이 담아낸 캠퍼스의 가을!<br/>
-        지정된 학번으로 인증하여 마음에 드는 사진에 투표해 주세요.
+        학번으로 인증하여 마음에 드는 사진에 투표해 주세요.
       </p>
 
       <div class="inline-flex flex-wrap items-center justify-center gap-3 bg-black/30 backdrop-blur-md px-5 py-2.5 rounded-2xl border border-white/15 text-xs sm:text-base text-amber-100 font-semibold shadow-lg">
@@ -401,7 +401,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const ADMIN_PASSWORD = "admin1234";
+    const ADMIN_PASSWORD = "cofss8162!";
     let isAdmin = false;
     let currentSort = 'popular';
     let currentDetailId = null;
@@ -599,3 +599,454 @@
             </div>
           </div>
         `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    window.setSort = function(sortType) {
+      currentSort = sortType;
+      const popularBtn = document.getElementById('sort-popular');
+      const latestBtn = document.getElementById('sort-latest');
+
+      if (sortType === 'popular') {
+        popularBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg transition text-white bg-amber-700 shadow-sm";
+        latestBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg transition text-stone-600 active:bg-stone-300";
+      } else {
+        latestBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg transition text-white bg-amber-700 shadow-sm";
+        popularBtn.className = "px-3 py-1.5 text-xs font-bold rounded-lg transition text-stone-600 active:bg-stone-300";
+      }
+
+      renderGallery();
+    }
+
+    window.initiateVote = function(photoId, event) {
+      if (event) event.stopPropagation();
+
+      const now = new Date();
+      if (now < VOTING_START) {
+        alert("🔒 인기상 투표 기간이 아직 시작되지 않았습니다.\n(투표 기간: 11월 3일 ~ 11월 16일)");
+        return;
+      }
+      if (now > VOTING_DEADLINE) {
+        alert("🔒 인기상 투표 기간이 종료되었습니다. (~11월 16일 마감)");
+        return;
+      }
+
+      pendingVotePhotoId = photoId;
+
+      if (!currentVoterStudentId) {
+        openVoteAuthModal();
+      } else {
+        processVote(currentVoterStudentId, photoId);
+      }
+    }
+
+    window.openVoteAuthModal = function() {
+      const modal = document.getElementById('vote-auth-modal');
+      modal.classList.remove('hidden');
+      setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    }
+
+    window.closeVoteAuthModal = function() {
+      const modal = document.getElementById('vote-auth-modal');
+      modal.classList.add('opacity-0');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('voter-student-id').value = '';
+      }, 300);
+    }
+
+    window.handleVoteAuthSubmit = function(event) {
+      event.preventDefault();
+      const voterId = document.getElementById('voter-student-id').value.trim();
+
+      if (!voterId || voterId.length !== 8) {
+        alert("8자리 학번을 정확히 입력해 주세요.");
+        return;
+      }
+
+      if (!isValidVoterStudentId(voterId)) {
+        alert("⚠️ 투표 대상 학번이 아닙니다.\n(지정된 글로벌융합대학 학번만 투표 가능합니다)");
+        return;
+      }
+
+      currentVoterStudentId = voterId;
+      sessionStorage.setItem('duksung_voter_id', voterId);
+      closeVoteAuthModal();
+
+      if (pendingVotePhotoId) {
+        processVote(voterId, pendingVotePhotoId);
+      }
+    }
+
+    async function processVote(voterStudentId, photoId) {
+      const now = new Date();
+      if (now < VOTING_START) {
+        alert("🔒 인기상 투표 기간이 아직 시작되지 않았습니다.\n(투표 기간: 11월 3일 ~ 11월 16일)");
+        return;
+      }
+      if (now > VOTING_DEADLINE) {
+        alert("🔒 인기상 투표 기간이 종료되었습니다. (~11월 16일 마감)");
+        return;
+      }
+
+      if (!isValidVoterStudentId(voterStudentId)) {
+        alert("⚠️ 투표 대상 학번이 아닙니다.");
+        sessionStorage.removeItem('duksung_voter_id');
+        currentVoterStudentId = null;
+        return;
+      }
+
+      const photo = photosData.find(p => p.id === photoId);
+      if (!photo || photo.isSample) return;
+
+      if (photo.studentId === voterStudentId) {
+        alert("⚠️ 본인이 출품한 작품에는 투표할 수 없습니다!");
+        return;
+      }
+
+      let registry = getVoteRegistry();
+      let userVotes = registry[voterStudentId] || [];
+      const isVoted = userVotes.includes(photoId);
+
+      let newVotes = photo.votes || 0;
+      if (isVoted) {
+        userVotes = userVotes.filter(id => id !== photoId);
+        newVotes = Math.max(0, newVotes - 1);
+        alert("투표가 취소되었습니다.");
+      } else {
+        if (userVotes.length >= 3) {
+          alert(`⚠️ 학번 (${voterStudentId})당 최대 3개 작품까지만 투표 가능합니다!`);
+          return;
+        }
+        userVotes.push(photoId);
+        newVotes += 1;
+        alert("👍 투표가 완료되었습니다!");
+      }
+
+      try {
+        const photoRef = doc(db, "photos", photoId);
+        await updateDoc(photoRef, { votes: newVotes });
+        registry[voterStudentId] = userVotes;
+        saveVoteRegistry(registry);
+
+        if (currentDetailId === photoId) {
+          photo.votes = newVotes;
+          updateModalVoteUI(photo);
+        }
+      } catch (error) {
+        console.error("투표 반영 중 오류 발생:", error);
+        alert("투표 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    }
+
+    window.openDetailModal = function(id) {
+      currentDetailId = id;
+      const photo = photosData.find(p => p.id === id);
+      if (!photo) return;
+
+      document.getElementById('modal-img').src = photo.imageUrl;
+      document.getElementById('modal-title').textContent = photo.title;
+      document.getElementById('modal-author-name').textContent = photo.authorName;
+      document.getElementById('modal-student-id').textContent = isAdmin ? photo.studentId : window.maskStudentId(photo.studentId);
+      
+      const phoneRow = document.getElementById('modal-phone-row');
+      if (isAdmin && photo.phone) {
+        document.getElementById('modal-phone-number').textContent = photo.phone;
+        phoneRow.classList.remove('hidden');
+      } else {
+        phoneRow.classList.add('hidden');
+      }
+
+      document.getElementById('modal-desc').textContent = photo.desc || "등록된 작품 소개말이 없습니다.";
+
+      const realPhotos = photosData.filter(p => !p.isSample).sort((a, b) => b.votes - a.votes);
+      const rankIndex = realPhotos.findIndex(p => p.id === id);
+      const rankBadge = document.getElementById('modal-rank-badge');
+      
+      if (!photo.isSample && rankIndex >= 0 && rankIndex < 3 && photo.votes > 0) {
+        const titles = ["🥇 인기상 1위 후보", "🥈 인기상 2위 후보", "🥉 인기상 3위 후보"];
+        rankBadge.className = "inline-block mb-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300";
+        rankBadge.textContent = titles[rankIndex];
+        rankBadge.classList.remove('hidden');
+      } else {
+        rankBadge.classList.add('hidden');
+      }
+
+      updateModalVoteUI(photo);
+
+      const adminDeleteBtn = document.getElementById('modal-admin-delete-btn');
+      if (isAdmin) {
+        adminDeleteBtn.classList.remove('hidden');
+        adminDeleteBtn.onclick = () => deletePhoto(id);
+      } else {
+        adminDeleteBtn.classList.add('hidden');
+      }
+
+      const modal = document.getElementById('detail-modal');
+      const modalContent = document.getElementById('detail-modal-content');
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modalContent.classList.remove('translate-y-full');
+      }, 10);
+    }
+
+    function updateModalVoteUI(photo) {
+      const registry = getVoteRegistry();
+      const userVotes = currentVoterStudentId ? (registry[currentVoterStudentId] || []) : [];
+      const isVoted = userVotes.includes(photo.id);
+
+      document.getElementById('modal-vote-count').textContent = photo.votes || 0;
+      const voteBtn = document.getElementById('modal-vote-btn');
+      const voteBtnText = document.getElementById('modal-vote-btn-text');
+
+      if (photo.isSample) {
+        voteBtn.className = "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-stone-200 text-stone-500 cursor-not-allowed";
+        voteBtnText.textContent = "예시 작품 (투표 불가)";
+        voteBtn.onclick = null;
+        return;
+      }
+
+      if (isVoted) {
+        voteBtn.className = "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shadow bg-red-50 text-red-600 border border-red-200";
+        voteBtnText.textContent = "투표완료 (취소)";
+      } else {
+        voteBtn.className = "flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold shadow bg-amber-700 text-white active:bg-amber-800";
+        voteBtnText.textContent = "투표하기";
+      }
+
+      voteBtn.onclick = (e) => initiateVote(photo.id, e);
+    }
+
+    window.closeDetailModal = function() {
+      const modal = document.getElementById('detail-modal');
+      const modalContent = document.getElementById('detail-modal-content');
+      modal.classList.add('opacity-0');
+      modalContent.classList.add('translate-y-full');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        currentDetailId = null;
+      }, 300);
+    }
+
+    window.openUploadModal = function() {
+      if (!isSubmissionOpen()) {
+        alert("🔒 작품 출품 기간이 완료되었습니다. (~11/2 자정 마감)");
+        return;
+      }
+
+      const modal = document.getElementById('upload-modal');
+      const modalContent = document.getElementById('upload-modal-content');
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modal.classList.remove('opacity-0');
+        modalContent.classList.remove('translate-y-full');
+      }, 10);
+    }
+
+    window.closeUploadModal = function() {
+      const modal = document.getElementById('upload-modal');
+      const modalContent = document.getElementById('upload-modal-content');
+      modal.classList.add('opacity-0');
+      modalContent.classList.add('translate-y-full');
+      setTimeout(() => {
+        modal.classList.add('hidden');
+        document.getElementById('upload-form').reset();
+        window.removePreview();
+      }, 300);
+    }
+
+    window.previewImage = function(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          document.getElementById('image-preview').src = compressedDataUrl;
+          document.getElementById('upload-placeholder').classList.add('hidden');
+          document.getElementById('preview-container').classList.remove('hidden');
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    window.removePreview = function(event) {
+      if (event) event.stopPropagation();
+      document.getElementById('photo-file').value = '';
+      document.getElementById('image-preview').src = '';
+      document.getElementById('upload-placeholder').classList.remove('hidden');
+      document.getElementById('preview-container').classList.add('hidden');
+    }
+
+    window.handleUploadSubmit = async function(event) {
+      event.preventDefault();
+
+      if (!isSubmissionOpen()) {
+        alert("🔒 작품 출품 기간이 완료되었습니다. (~11/2 자정 마감)");
+        return;
+      }
+
+      const title = document.getElementById('photo-title').value.trim();
+      const authorName = document.getElementById('author-name').value.trim();
+      const studentId = document.getElementById('student-id').value.trim();
+      const phone = document.getElementById('phone-number').value.trim();
+      const desc = document.getElementById('photo-desc').value.trim();
+      const previewImgSrc = document.getElementById('image-preview').src;
+
+      if (!previewImgSrc) {
+        alert("작품 사진을 선택해주세요.");
+        return;
+      }
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = "업로드 중...";
+
+      try {
+        const now = new Date();
+        const formattedDate = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+        await addDoc(collection(db, "photos"), {
+          title,
+          authorName,
+          studentId,
+          phone,
+          desc,
+          imageUrl: previewImgSrc,
+          votes: 0,
+          createdAt: formattedDate
+        });
+
+        window.closeUploadModal();
+        alert("🎉 작품이 성공적으로 출품되었습니다!");
+      } catch (error) {
+        console.error("출품 중 오류 발생:", error);
+        alert("업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "작품 등록 완료";
+      }
+    }
+
+    window.toggleAdminModal = function() {
+      if (isAdmin) {
+        isAdmin = false;
+        document.getElementById('admin-badge-desktop').classList.add('hidden');
+        document.getElementById('admin-badge-mobile').classList.add('hidden');
+        document.getElementById('btn-export-csv').classList.add('hidden');
+        document.getElementById('btn-export-csv-mobile').classList.add('hidden');
+        document.getElementById('admin-btn-text-desktop').textContent = "관리자 로그인";
+        document.getElementById('mobile-admin-tab-text').textContent = "관리자";
+        alert("관리자 모드에서 로그아웃 되었습니다.");
+        renderGallery();
+        return;
+      }
+
+      const modal = document.getElementById('admin-modal');
+      modal.classList.remove('hidden');
+      setTimeout(() => modal.classList.remove('opacity-0'), 10);
+    }
+
+    window.handleAdminLogin = function(event) {
+      event.preventDefault();
+      const inputPass = document.getElementById('admin-password').value;
+
+      if (inputPass === ADMIN_PASSWORD) {
+        isAdmin = true;
+        document.getElementById('admin-badge-desktop').classList.remove('hidden');
+        document.getElementById('admin-badge-desktop').classList.add('flex');
+        document.getElementById('admin-badge-mobile').classList.remove('hidden');
+        document.getElementById('btn-export-csv').classList.remove('hidden');
+        document.getElementById('btn-export-csv').classList.add('flex');
+        document.getElementById('btn-export-csv-mobile').classList.remove('hidden');
+        document.getElementById('btn-export-csv-mobile').classList.add('flex');
+        document.getElementById('admin-btn-text-desktop').textContent = "관리자 로그아웃";
+        document.getElementById('mobile-admin-tab-text').textContent = "로그아웃";
+        
+        document.getElementById('admin-password').value = '';
+        const modal = document.getElementById('admin-modal');
+        modal.classList.add('opacity-0');
+        setTimeout(() => modal.classList.add('hidden'), 300);
+
+        renderGallery();
+        alert("🔓 관리자로 인증되었습니다. 원본 학번/연락처 열람 및 CSV 다운로드가 가능합니다.");
+      } else {
+        alert("비밀번호가 올바르지 않습니다.");
+      }
+    }
+
+    window.deletePhoto = async function(id) {
+      if (!isAdmin) return;
+      if (confirm("정말로 이 작품을 삭제하시겠습니까?")) {
+        try {
+          await deleteDoc(doc(db, "photos", id));
+          window.closeDetailModal();
+          alert("작품이 삭제되었습니다.");
+        } catch (error) {
+          console.error("삭제 중 오류:", error);
+          alert("삭제에 실패했습니다.");
+        }
+      }
+    }
+
+    window.exportToCSV = function() {
+      if (!isAdmin) return;
+      let photos = photosData.filter(p => !p.isSample);
+      photos.sort((a, b) => b.votes - a.votes);
+
+      let csv = "\uFEFF순위,작품제목,출품자이름,학번,연락처,득표수,작품소개말,출품일시\n";
+      
+      photos.forEach((p, idx) => {
+        const cleanDesc = (p.desc || "").replace(/"/g, '""').replace(/\n/g, ' ');
+        csv += `${idx + 1},"${p.title}","${p.authorName}","${p.studentId}","${p.phone}",${p.votes || 0},"${cleanDesc}","${p.createdAt}"\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `글로벌융합대학_사진전_결과_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    window.scrollToTop = function() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return "";
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initRealtimeSync();
+    });
+  </script>
+</body>
+</html>
